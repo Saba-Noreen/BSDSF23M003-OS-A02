@@ -1,12 +1,21 @@
 /*
 * Programming Assignment 02: lsv1.0.0
-* This is the source file of version 1.0.0
-* Read the write-up of the assignment to add the features to this base version
+* This is the source file of version * Read the write-up of the assignment to add the features to this base version
 * Usage:
 *       $ lsv1.0.0 
 *       % lsv1.0.0  /home
 *       $ lsv1.0.0  /home/kali/   /etc/
 */
+/*
+* Programming Assignment 02: lsv1.1.0
+* This is the source file of version 1.1.0
+* Adds -l long listing format to the base ls-v1.0.0
+* Usage:
+*       $ lsv1.1.0 
+*       $ lsv1.1.0 /home
+*       $ lsv1.1.0 -l /home/kali/ /etc/
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -19,45 +28,78 @@
 #include <time.h>
 
 extern int errno;
+int long_listing = 0;   // flag for -l option
 
-void do_ls(const char *dir,int long_listing);
-void print_file_info(const char *path,const char *filename);
-void print_permissions(mode_t mode);
+void do_ls(const char *dir);
+void do_ls_long(const char *dir);
 
 int main(int argc, char const *argv[])
 {
-    int long_listing = 0;
-    int arg_start =1;
-    if (arg >1 && strcmp(argv[1],"-l")==0)
-{
-	long_listing =1;
-	arg_start=1;
-}
-
- if (argc == arg_start)
+    int opt;
+    while ((opt = getopt(argc, (char * const *)argv, "l")) != -1)
     {
-        do_ls(".", long_listing);
-    }   if (argc == 1)
-    {
-        do_ls(".");
-    }
-    else
-    {
-        for (int i = arg_start; i < argc; i++)
+        switch (opt)
         {
-            printf("Directory listing of %s : \n", argv[i]);
-            do_ls(argv[i],long_listing);
-	    puts("");
+            case 'l':
+                long_listing = 1;
+                break;
+            default:
+                fprintf(stderr, "Usage: %s [-l] [directory...]\n", argv[0]);
+                exit(EXIT_FAILURE);
         }
     }
+
+    if (optind == argc)  // no directories specified
+    {
+        if(long_listing)
+            do_ls_long(".");
+        else
+            do_ls(".");
+    }
+    else  // directories provided
+    {
+        for (int i = optind; i < argc; i++)
+        {
+            printf("Directory listing of %s : \n", argv[i]);
+            if(long_listing)
+                do_ls_long(argv[i]);
+            else
+                do_ls(argv[i]);
+            puts("");
+        }
+    }
+
     return 0;
 }
 
-void do_ls(const char *dir, int long_listing)
+void do_ls(const char *dir)
 {
     struct dirent *entry;
     DIR *dp = opendir(dir);
+    if (dp == NULL)
+    {
+        fprintf(stderr, "Cannot open directory : %s\n", dir);
+        return;
+    }
 
+    errno = 0;
+    while ((entry = readdir(dp)) != NULL)
+    {
+        if (entry->d_name[0] == '.')
+            continue;
+        printf("%s\n", entry->d_name);
+    }
+
+    if (errno != 0)
+        perror("readdir failed");
+
+    closedir(dp);
+}
+
+void do_ls_long(const char *dir)
+{
+    struct dirent *entry;
+    DIR *dp = opendir(dir);
     if (dp == NULL)
     {
         fprintf(stderr, "Cannot open directory: %s\n", dir);
@@ -65,96 +107,60 @@ void do_ls(const char *dir, int long_listing)
     }
 
     errno = 0;
-
     while ((entry = readdir(dp)) != NULL)
     {
         if (entry->d_name[0] == '.')
-            continue; // skip hidden files
+            continue;
 
-        if (long_listing)
+        struct stat st;
+        char path[1024];
+        snprintf(path, sizeof(path), "%s/%s", dir, entry->d_name);
+        if(lstat(path, &st) == -1)
         {
-            print_file_info(dir, entry->d_name);
+            perror("lstat");
+            continue;
         }
-        else
-        {
-            printf("%s\n", entry->d_name);
-        }
+
+        // File type
+        char type = '-';
+        if (S_ISDIR(st.st_mode)) type = 'd';
+        else if (S_ISLNK(st.st_mode)) type = 'l';
+
+        // Permissions
+        char perms[10] = "---------";
+        if (st.st_mode & S_IRUSR) perms[0] = 'r';
+        if (st.st_mode & S_IWUSR) perms[1] = 'w';
+        if (st.st_mode & S_IXUSR) perms[2] = 'x';
+        if (st.st_mode & S_IRGRP) perms[3] = 'r';
+        if (st.st_mode & S_IWGRP) perms[4] = 'w';
+        if (st.st_mode & S_IXGRP) perms[5] = 'x';
+        if (st.st_mode & S_IROTH) perms[6] = 'r';
+        if (st.st_mode & S_IWOTH) perms[7] = 'w';
+        if (st.st_mode & S_IXOTH) perms[8] = 'x';
+
+        // Owner & group
+        struct passwd *pw = getpwuid(st.st_uid);
+        struct group *gr = getgrgid(st.st_gid);
+
+        // Modification time
+        char timebuf[64];
+        strftime(timebuf, sizeof(timebuf), "%b %d %H:%M", localtime(&st.st_mtime));
+
+        printf("%c%s %ld %s %s %ld %s %s\n",
+            type, perms,
+            st.st_nlink,
+            pw ? pw->pw_name : "unknown",
+            gr ? gr->gr_name : "unknown",
+            st.st_size,
+            timebuf,
+            entry->d_name
+        );
     }
 
-    if (errno != 0)
-    {
+    if(errno != 0)
         perror("readdir failed");
-    }
 
-   
     closedir(dp);
 }
-void print_file_info(const char *path, const char *filename)
-{
-    char fullpath[1024];
-    struct stat info;
-    struct passwd *pw;
-    struct group *gr;
-    char timebuf[80];
 
-    // Build full path (dir + "/" + filename)
-    snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
 
-    if (lstat(fullpath, &info) == -1)
-    {
-        perror("lstat");
-        return;
-    }
-
-    // File type + permissions
-    print_permissions(info.st_mode);
-
-    // Number of links
-    printf(" %2ld", (long)info.st_nlink);
-
-    // Owner and group
-    pw = getpwuid(info.st_uid);
-    gr = getgrgid(info.st_gid);
-    printf(" %-8s %-8s", pw ? pw->pw_name : "?", gr ? gr->gr_name : "?");
-
-    // File size
-    printf(" %8ld", (long)info.st_size);
-
-    // Modification time
-    struct tm *tm_info = localtime(&info.st_mtime);
-    strftime(timebuf, sizeof(timebuf), "%b %d %H:%M", tm_info);
-    printf(" %s", timebuf);
-
-    // File name
-    printf(" %s\n", filename);
-}
-
-/*------------------------------------------------------*/
-
-void print_permissions(mode_t mode)
-{
-    // File type
-    if (S_ISREG(mode)) printf("-");
-    else if (S_ISDIR(mode)) printf("d");
-    else if (S_ISLNK(mode)) printf("l");
-    else if (S_ISCHR(mode)) printf("c");
-    else if (S_ISBLK(mode)) printf("b");
-    else if (S_ISFIFO(mode)) printf("p");
-    else if (S_ISSOCK(mode)) printf("s");
-    else printf("?");
-
-    // Owner permissions
-    printf("%c", (mode & S_IRUSR) ? 'r' : '-');
-    printf("%c", (mode & S_IWUSR) ? 'w' : '-');
-    printf("%c", (mode & S_IXUSR) ? 'x' : '-');
-
-    // Group permissions
-    printf("%c", (mode & S_IRGRP) ? 'r' : '-');
-    printf("%c", (mode & S_IWGRP) ? 'w' : '-');
-    printf("%c", (mode & S_IXGRP) ? 'x' : '-');
-
-    // Others permissions
-    printf("%c", (mode & S_IROTH) ? 'r' : '-');
-    printf("%c", (mode & S_IWOTH) ? 'w' : '-');
-    printf("%c", (mode & S_IXOTH) ? 'x' : '-');
-}
