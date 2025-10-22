@@ -31,136 +31,59 @@ extern int errno;
 int long_listing = 0;   // flag for -l option
 
 void do_ls(const char *dir);
-void do_ls_long(const char *dir);
 
 int main(int argc, char const *argv[])
 {
-    int opt;
-    while ((opt = getopt(argc, (char * const *)argv, "l")) != -1)
-    {
-        switch (opt)
-        {
-            case 'l':
-                long_listing = 1;
-                break;
-            default:
-                fprintf(stderr, "Usage: %s [-l] [directory...]\n", argv[0]);
-                exit(EXIT_FAILURE);
-        }
-    }
-
-    if (optind == argc)  // no directories specified
-    {
-        if(long_listing)
-            do_ls_long(".");
-        else
-            do_ls(".");
-    }
-    else  // directories provided
-    {
-        for (int i = optind; i < argc; i++)
-        {
-            printf("Directory listing of %s : \n", argv[i]);
-            if(long_listing)
-                do_ls_long(argv[i]);
-            else
-                do_ls(argv[i]);
+	 if (argc == 1) {
+        do_ls(".");
+    } else {
+        for (int i = 1; i < argc; i++) {
+            printf("Directory listing of %s:\n", argv[i]);
+            do_ls(argv[i]);
             puts("");
         }
     }
-
     return 0;
 }
-
+    
 void do_ls(const char *dir)
 {
-    struct dirent *entry;
+   struct dirent *entry;
     DIR *dp = opendir(dir);
-    if (dp == NULL)
-    {
-        fprintf(stderr, "Cannot open directory : %s\n", dir);
-        return;
-    }
-
-    errno = 0;
-    while ((entry = readdir(dp)) != NULL)
-    {
-        if (entry->d_name[0] == '.')
-            continue;
-        printf("%s\n", entry->d_name);
-    }
-
-    if (errno != 0)
-        perror("readdir failed");
-
-    closedir(dp);
-}
-
-void do_ls_long(const char *dir)
-{
-    struct dirent *entry;
-    DIR *dp = opendir(dir);
-    if (dp == NULL)
-    {
+    if (dp == NULL) {
         fprintf(stderr, "Cannot open directory: %s\n", dir);
         return;
     }
 
-    errno = 0;
-    while ((entry = readdir(dp)) != NULL)
-    {
-        if (entry->d_name[0] == '.')
-            continue;
+    /* Gather filenames */
+    char *names[1024];
+    int count = 0, maxlen = 0;
 
-        struct stat st;
-        char path[1024];
-        snprintf(path, sizeof(path), "%s/%s", dir, entry->d_name);
-        if(lstat(path, &st) == -1)
-        {
-            perror("lstat");
-            continue;
+    while ((entry = readdir(dp)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+        names[count] = strdup(entry->d_name);
+        int len = strlen(entry->d_name);
+        if (len > maxlen) maxlen = len;
+        count++;
+    }
+    closedir(dp);
+
+    /* Compute columns */
+    int termwidth = 80;
+    int cols = termwidth / (maxlen + 2);
+    if (cols < 1) cols = 1;
+    int rows = (count + cols - 1) / cols;
+
+    /* Print in columns */
+    for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
+            int i = c * rows + r;
+            if (i < count)
+                printf("%-*s", maxlen + 2, names[i]);
         }
-
-        // File type
-        char type = '-';
-        if (S_ISDIR(st.st_mode)) type = 'd';
-        else if (S_ISLNK(st.st_mode)) type = 'l';
-
-        // Permissions
-        char perms[10] = "---------";
-        if (st.st_mode & S_IRUSR) perms[0] = 'r';
-        if (st.st_mode & S_IWUSR) perms[1] = 'w';
-        if (st.st_mode & S_IXUSR) perms[2] = 'x';
-        if (st.st_mode & S_IRGRP) perms[3] = 'r';
-        if (st.st_mode & S_IWGRP) perms[4] = 'w';
-        if (st.st_mode & S_IXGRP) perms[5] = 'x';
-        if (st.st_mode & S_IROTH) perms[6] = 'r';
-        if (st.st_mode & S_IWOTH) perms[7] = 'w';
-        if (st.st_mode & S_IXOTH) perms[8] = 'x';
-
-        // Owner & group
-        struct passwd *pw = getpwuid(st.st_uid);
-        struct group *gr = getgrgid(st.st_gid);
-
-        // Modification time
-        char timebuf[64];
-        strftime(timebuf, sizeof(timebuf), "%b %d %H:%M", localtime(&st.st_mtime));
-
-        printf("%c%s %ld %s %s %ld %s %s\n",
-            type, perms,
-            st.st_nlink,
-            pw ? pw->pw_name : "unknown",
-            gr ? gr->gr_name : "unknown",
-            st.st_size,
-            timebuf,
-            entry->d_name
-        );
+        printf("\n");
     }
 
-    if(errno != 0)
-        perror("readdir failed");
-
-    closedir(dp);
+    for (int i = 0; i < count; i++)
+        free(names[i]);
 }
-
-
