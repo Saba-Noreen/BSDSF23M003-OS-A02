@@ -1,17 +1,25 @@
+# Compiler and flags
 CC = gcc
 CFLAGS = -Wall
-SRC = src/ls-v1.0.0.c
-OBJ = obj/ls-v1.0.0.o
+
+# Paths
+SRC = src/ls.c
+OBJ = obj/ls.o
 BIN = bin/ls
 
+# Default target
 all: $(BIN)
-$(BIN): $(OBJ)
-	$(CC) $(CFLAGS) -o $(BIN) $(OBJ)
 
-obj/ls-v1.0.0.o: $(SRC)
-	@mkdir -p obj bin
+# Rule to link object file and create executable
+$(BIN): $(OBJ)
+	$(CC) $(OBJ) -o $(BIN)
+
+# Rule to compile .c to .o
+$(OBJ): $(SRC)
+	mkdir -p obj bin
 	$(CC) $(CFLAGS) -c $(SRC) -o $(OBJ)
 
+# Clean rule
 clean:
 	rm -f $(OBJ) $(BIN)
 
