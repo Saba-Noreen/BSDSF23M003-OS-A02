@@ -3,7 +3,7 @@ CC = gcc
 CFLAGS = -Wall
 
 # Paths
-SRC = src/ls.c
+
 OBJ = obj/ls.o
 BIN = bin/ls
 
@@ -15,11 +15,10 @@ $(BIN): $(OBJ)
 	$(CC) $(OBJ) -o $(BIN)
 
 # Rule to compile .c to .o
-$(OBJ): $(SRC)
+obj/ls.o: src/ls.c
 	mkdir -p obj bin
-	$(CC) $(CFLAGS) -c $(SRC) -o $(OBJ)
+	$(CC) $(CFLAGS) -c src/ls.c -o obj/ls.o 
 
 # Clean rule
 clean:
-	rm -f $(OBJ) $(BIN)
-
+	rm -f obj*/.o bin/ls
